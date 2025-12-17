@@ -34,6 +34,7 @@ jobs:
         uses: esp-rs/xtensa-toolchain@v1.6
         with:
           default: true
+          version: "1.90.0.0"
           buildtargets: esp32s3
           ldproxy: true
       - name: Enable caching
