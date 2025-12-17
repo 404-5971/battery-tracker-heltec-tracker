@@ -11,68 +11,92 @@ type GpsFix = Option<(f64, f64)>;
 
 pub fn get_lat_lon(
     uart: UART1,
-    tx: Gpio33,
-    rx: Gpio34,
+    rx: Gpio33,
+    tx: Gpio34,
     mut power_pin: Gpio3,
 ) -> Result<(GpsFix, Gpio3), Box<dyn Error>> {
     // 1. Hardware Enable (GPIO 3)
-    // The V1.2 requires GPIO 3 High to power the GNSS module.
     let mut gps_power = PinDriver::output(&mut power_pin)?;
     gps_power.set_high()?;
-    println!("GPS Power Enabled via GPIO 3");
+    info!("GPS Power Enabled via GPIO 3");
 
     // Give the module a moment to wake up
     FreeRtos::delay_ms(500);
 
     // 2. UART Configuration
-    // TX: GPIO 33, RX: GPIO 34
     let config = UartConfig::new().baudrate(Hertz(115200));
     let uart = UartDriver::new(
         uart,
         tx,
         rx,
-        Option::<esp_idf_svc::hal::gpio::Gpio0>::None, // No CTS
-        Option::<esp_idf_svc::hal::gpio::Gpio0>::None, // No RTS
+        Option::<esp_idf_svc::hal::gpio::Gpio0>::None,
+        Option::<esp_idf_svc::hal::gpio::Gpio0>::None,
         &config,
     )?;
 
-    // 3. Parser Loop
-    let mut nmea = Nmea::default();
-    let mut buffer = [0u8; 1]; // Read byte by byte for simplicity
+    // 3. Send Initialization Command (From C++ Reference)
+    // This configures the system (CFGSYS) for the specific Air530/UC6580 mode
+    let init_cmd = b"$CFGSYS,h35155*68\r\n";
+    uart.write(init_cmd)?;
+    info!("Sent GNSS Init Command");
 
-    // Create a vector to hold the current line
-    let mut line_buffer = String::new();
+    // 4. Parser Loop
+    let mut nmea = Nmea::default();
+    let mut buffer = [0u8; 256];
+
+    // IMPORTANT: Buffer must be OUTSIDE the loop to accumulate fragments
+    let mut sentence_accumulator = String::new();
 
     info!("Waiting for GPS fix...");
+    let start_time = std::time::Instant::now();
 
-    for _ in 0..3 {
-        // Read 1 byte with a timeout
+    while start_time.elapsed() < Duration::from_secs(5 * 60) {
         match uart.read(&mut buffer, 100) {
             Ok(bytes_read) if bytes_read > 0 => {
-                let char = buffer[0] as char;
+                // Iterate over received bytes
+                for &byte in &buffer[..bytes_read] {
+                    let char = byte as char;
+                    sentence_accumulator.push(char);
 
-                if char == '\n' {
-                    // Line complete, attempt parse
-                    if let Ok(_msg) = nmea.parse(&line_buffer) {
-                        if let (Some(lat), Some(lon)) = (nmea.latitude, nmea.longitude) {
-                            // Return the pin back so it can be used for deep sleep hold
-                            drop(gps_power);
-                            let power_pin = power_pin;
-                            return Ok((Some((lat, lon)), power_pin));
+                    // Check for end of line (NMEA standard ends with \r\n)
+                    if char == '\n' {
+                        let line = sentence_accumulator.trim();
+
+                        // DEBUG: Print raw output to verify hardware is talking
+                        // info!("GNSS Raw: {}", line);
+
+                        // Parse the complete line
+                        match nmea.parse(line) {
+                            Ok(_) => {
+                                // Check if we have a valid fix (lat/lon not None)
+                                if let (Some(lat), Some(lon)) = (nmea.latitude, nmea.longitude) {
+                                    info!("Fix Acquired: {}, {}", lat, lon);
+
+                                    // Cleanup
+                                    drop(gps_power);
+                                    let power_pin = power_pin;
+                                    return Ok((Some((lat, lon)), power_pin));
+                                }
+                            }
+                            Err(_e) => {
+                                // Checksum errors are common on startup, ignore them
+                            }
                         }
+
+                        // Clear buffer for next sentence
+                        sentence_accumulator.clear();
                     }
-                    line_buffer.clear();
-                } else {
-                    line_buffer.push(char);
                 }
             }
             _ => {
-                // Timeout or no data, just continue
-                // Ideally, sleep briefly to yield if no data
-                std::thread::sleep(Duration::from_millis(10));
+                // Short sleep to yield to RTOS
+                // info!("I'm running");
+                FreeRtos::delay_ms(10);
             }
         }
     }
+
+    info!("GPS Timeout");
     drop(gps_power);
     let power_pin = power_pin;
     Ok((None, power_pin))
