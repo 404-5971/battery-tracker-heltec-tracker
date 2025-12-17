@@ -1,0 +1,17 @@
+#!/bin/sh
+
+# 1. Formatting (Static check - safe to run)
+echo "🎨 Checking Formatting..."
+cargo fmt --all -- --check --color always || exit 1
+
+# 2. Strict Clippy (Static analysis - catches bad practices/bugs without running)
+echo "📎 Checking Clippy (Strict)..."
+cargo clippy --all-targets --all-features --workspace -- -D warnings || exit 1
+
+# 3. Compile Tests Only (NO EXECUTION)
+# This compiles the test harness to verify code correctness but does NOT 
+# attempt to flash the device or run the binary.
+echo "🏗️  Compiling Tests (Build Check Only)..."
+cargo test --all-targets --all-features --workspace --no-run || exit 1
+
+echo "✅ Code compiles and lints pass. Ready to push!"

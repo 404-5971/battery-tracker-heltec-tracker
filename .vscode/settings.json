@@ -1,0 +1,35 @@
+{
+  // 1. MATCH CI: "command: clippy"
+  "rust-analyzer.check.command": "clippy",
+
+  // 2. MATCH CI: "--all-targets"
+  // Rust Analyzer does this automatically. We set it explicitly to be sure, 
+  // but we DO NOT put it in extraArgs to avoid the "multiple times" crash.
+  "rust-analyzer.check.allTargets": true,
+
+  // 3. MATCH CI: "--all-features"
+  // Using the native setting is cleaner than passing it as an arg.
+  "rust-analyzer.cargo.features": "all",
+
+  // 4. MATCH CI: "-D warnings"
+  // This is the only part that needs to go into extraArgs.
+  // Note: We don't need "--workspace" here; RA detects workspaces automatically.
+  "rust-analyzer.check.extraArgs": [
+    "--",
+    "-D",
+    "warnings"
+  ],
+
+  // 5. MATCH CI: "command: fmt"
+  // This ensures your local files pass the CI formatting check.
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true
+  },
+
+  // BONUS: Handle Embedded Targets (XTENSA/ESP32)
+  // Since your CI uses the xtensa-toolchain, RA needs to know not to 
+  // check against your PC's architecture (x86/M1), but against the ESP32.
+  // If you see "core" crate errors, uncomment the line below:
+  // "rust-analyzer.cargo.target": "xtensa-esp32s3-espidf",
+}

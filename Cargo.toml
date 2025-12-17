@@ -45,3 +45,6 @@ esp-idf-svc = "0.51"
 
 [build-dependencies]
 embuild = "0.33"
+
+[dev-dependencies]
+cargo-husky = { version = "1.5.0", default-features = false, features = ["user-hooks"] }

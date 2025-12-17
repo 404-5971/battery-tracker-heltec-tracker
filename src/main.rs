@@ -21,8 +21,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     info!("Initializing GPIOs...");
     unsafe {
-        sys::gpio_hold_dis(pins.gpio3.pin() as i32);
-        sys::gpio_hold_dis(pins.gpio2.pin() as i32);
+        sys::gpio_hold_dis(pins.gpio3.pin());
+        sys::gpio_hold_dis(pins.gpio2.pin());
     }
 
     for i in 0..5 {
@@ -50,8 +50,8 @@ fn enter_deep_sleep(gpio3: Gpio3, gpio2: Gpio2) -> Result<(), Box<dyn Error>> {
     // 2. Enable Hold (Still requires unsafe for the raw sys call)
     // There is no standard "safe" HAL wrapper for hold_en yet that covers all chips perfectly.
     unsafe {
-        sys::gpio_hold_en(vext.pin() as i32);
-        sys::gpio_hold_en(adc_ctrl.pin() as i32);
+        sys::gpio_hold_en(vext.pin());
+        sys::gpio_hold_en(adc_ctrl.pin());
     }
 
     // 3. Configure Sleep
