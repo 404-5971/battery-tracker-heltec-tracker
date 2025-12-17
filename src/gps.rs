@@ -5,6 +5,7 @@ use esp_idf_svc::hal::units::Hertz;
 use log::info;
 use nmea::Nmea;
 use std::error::Error;
+use std::thread::sleep;
 use std::time::Duration;
 
 type GpsFix = Option<(f64, f64)>;
@@ -76,7 +77,7 @@ pub fn get_lat_lon(
                 }
             }
             _ => {
-                FreeRtos::delay_ms(10);
+                sleep(Duration::from_millis(10));
             }
         }
     }

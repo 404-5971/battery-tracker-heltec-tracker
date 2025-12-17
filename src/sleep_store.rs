@@ -1,8 +1,11 @@
+// use log::info;
+
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct LastLonLat {
-    pub last_lat: Option<f64>,
-    pub last_lon: Option<f64>,
+    pub lat: f64,
+    pub lon: f64,
+    pub valid: u8, // 0 = false, 1 = true
 }
 
 #[repr(C)]
@@ -13,12 +16,14 @@ struct RtcMemory {
 
 const MAGIC_NUMBER: u32 = 0x4750_5321; // "GPS!" in hex-ish
 
-#[link_section = ".rtc.noinit"]
+#[no_mangle]
+#[link_section = ".rtc_noinit"]
 static mut RTC_MEM: RtcMemory = RtcMemory {
     magic: 0,
     data: LastLonLat {
-        last_lat: None,
-        last_lon: None,
+        lat: 0.0,
+        lon: 0.0,
+        valid: 0,
     },
 };
 
@@ -27,24 +32,29 @@ pub struct DeepSleepStore;
 
 impl DeepSleepStore {
     /// Safely load data from RTC memory.
-    /// Returns default/empty data if the magic number doesn't match (first boot).
-    pub fn load() -> LastLonLat {
+    pub fn load() -> Option<(f64, f64)> {
         unsafe {
-            if RTC_MEM.magic == MAGIC_NUMBER {
-                RTC_MEM.data
+            let magic = RTC_MEM.magic;
+            let data = RTC_MEM.data;
+            // let addr = std::ptr::addr_of!(RTC_MEM);
+
+            // info!("RTC Memory Address: {:p}", addr);
+            // info!("RTC Magic: {:#x}", magic);
+            // info!("RTC Data: {:?}", data);
+
+            if magic == MAGIC_NUMBER && data.valid == 1 {
+                Some((data.lat, data.lon))
             } else {
-                LastLonLat {
-                    last_lat: None,
-                    last_lon: None,
-                }
+                None
             }
         }
     }
 
     /// Safely save data to RTC memory.
-    pub fn save(data: LastLonLat) {
+    pub fn save(lat: f64, lon: f64) {
         unsafe {
-            RTC_MEM.data = data;
+            // info!("Saving to RTC: Lat: {}, Lon: {}", lat, lon);
+            RTC_MEM.data = LastLonLat { lat, lon, valid: 1 };
             RTC_MEM.magic = MAGIC_NUMBER;
         }
     }

@@ -4,6 +4,7 @@ use esp_idf_svc::log::EspLogger;
 use esp_idf_svc::sys;
 use log::info;
 use std::error::Error;
+use std::thread::sleep;
 use std::time::Duration;
 
 mod deep_sleep;
@@ -13,33 +14,32 @@ mod gps;
 use gps::get_lat_lon;
 
 mod sleep_store;
-use sleep_store::{DeepSleepStore, LastLonLat};
+use sleep_store::DeepSleepStore;
+
+// 0.0001 degrees is roughly 11 meters
+const MOVEMENT_THRESHOLD: f64 = 0.0001;
 
 fn main() -> Result<(), Box<dyn Error>> {
     sys::link_patches();
     EspLogger::initialize_default();
 
-    // 1. Take peripherals ONCE at the top of main
     let peripherals = Peripherals::take()?;
     let pins = peripherals.pins;
 
-    // 2. Perform your logic
     // Give USB some time to enumerate (Crucial for seeing logs after a wake-up reboot)
-    std::thread::sleep(Duration::from_secs(3));
+    sleep(Duration::from_secs(3));
     info!("Device is awake (Booted/Reset)! Waiting for USB enumeration...");
 
-    // Check reset reason for logging purposes
     unsafe {
         let reset_reason = sys::esp_reset_reason();
         info!("Reset reason: {}", reset_reason);
     }
 
-    // Load previous state safely
     let last_data = DeepSleepStore::load();
-    info!(
-        "Previous State -> Lat: {:?}, Lon: {:?}",
-        last_data.last_lat, last_data.last_lon
-    );
+    match last_data {
+        Some((lat, lon)) => info!("Previous State -> Lat: {}, Lon: {}", lat, lon),
+        None => info!("Previous State -> Lat: None, Lon: None"),
+    }
 
     info!("Initializing GPIOs...");
     unsafe {
@@ -48,27 +48,37 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let (gps_fix, gpio3) = get_lat_lon(peripherals.uart1, pins.gpio33, pins.gpio34, pins.gpio3)?;
-    match gps_fix {
-        Some((lat, lon)) => info!("Lat: {}, Lon: {}", lat, lon),
-        None => info!("No GPS fix found"),
-    }
 
-    // Save new state safely
-    DeepSleepStore::save(LastLonLat {
-        last_lat: gps_fix.map(|(lat, _)| lat),
-        last_lon: gps_fix.map(|(_, lon)| lon),
-    });
+    let Some((lat, lon)) = gps_fix else {
+        info!("No GPS fix found. Sleeping immediately");
+        return enter_deep_sleep(gpio3, pins.gpio2);
+    };
 
-    /* TODO: If the new GPS coords rounded aren't close enough to the last coords
-    then we've moved, and we need to send our location to the LoRaWAN server
-    else we can go back to sleep, and check again later*/
+    info!("Lat: {}, Lon: {}", lat, lon);
 
-    for i in 0..5 {
-        info!("Deep sleeping in {} seconds...", 5 - i);
-        std::thread::sleep(Duration::from_secs(1));
+    let Some((last_lat, last_lon)) = last_data else {
+        info!("No previous data found. Saving new data and sleeping");
+        DeepSleepStore::save(lat, lon);
+        return enter_deep_sleep(gpio3, pins.gpio2);
+    };
+
+    let lat_diff = (lat - last_lat).abs();
+    let lon_diff = (lon - last_lon).abs();
+
+    info!("Drift -> Lat: {:.6}, Lon: {:.6}", lat_diff, lon_diff);
+
+    if lat_diff > MOVEMENT_THRESHOLD || lon_diff > MOVEMENT_THRESHOLD {
+        info!("Moved significantly! Saving and sending.");
+        DeepSleepStore::save(lat, lon);
+        // TODO: Send to LoRaWAN server
+    } else {
+        info!(
+            "Drift is small ({:.6} < {}). Staying asleep.",
+            lat_diff.max(lon_diff),
+            MOVEMENT_THRESHOLD
+        );
     }
 
     info!("Deep sleeping now...");
-    // 3. Prepare for sleep
     enter_deep_sleep(gpio3, pins.gpio2)
 }
