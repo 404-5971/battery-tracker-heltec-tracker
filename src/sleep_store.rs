@@ -3,8 +3,8 @@
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct LastLonLat {
-    pub lat: f64,
-    pub lon: f64,
+    pub lat: f32,
+    pub lon: f32,
     pub valid: u8, // 0 = false, 1 = true
 }
 
@@ -32,7 +32,7 @@ pub struct DeepSleepStore;
 
 impl DeepSleepStore {
     /// Safely load data from RTC memory.
-    pub fn load() -> Option<(f64, f64)> {
+    pub fn load() -> Option<(f32, f32)> {
         unsafe {
             let magic = RTC_MEM.magic;
             let data = RTC_MEM.data;
@@ -51,7 +51,7 @@ impl DeepSleepStore {
     }
 
     /// Safely save data to RTC memory.
-    pub fn save(lat: f64, lon: f64) {
+    pub fn save(lat: f32, lon: f32) {
         unsafe {
             // info!("Saving to RTC: Lat: {}, Lon: {}", lat, lon);
             RTC_MEM.data = LastLonLat { lat, lon, valid: 1 };

@@ -17,7 +17,7 @@ mod sleep_store;
 use sleep_store::DeepSleepStore;
 
 // 0.0001 degrees is roughly 11 meters
-const MOVEMENT_THRESHOLD: f64 = 0.0001;
+const MOVEMENT_THRESHOLD: f32 = 0.0001;
 
 fn main() -> Result<(), Box<dyn Error>> {
     sys::link_patches();
@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         info!("Reset reason: {}", reset_reason);
     }
 
-    let last_data = DeepSleepStore::load();
+    let last_data: Option<(f32, f32)> = DeepSleepStore::load();
     match last_data {
         Some((lat, lon)) => info!("Previous State -> Lat: {}, Lon: {}", lat, lon),
         None => info!("Previous State -> Lat: None, Lon: None"),

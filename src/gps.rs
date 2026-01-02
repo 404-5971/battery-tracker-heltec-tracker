@@ -8,7 +8,7 @@ use std::error::Error;
 use std::thread::sleep;
 use std::time::Duration;
 
-type GpsFix = Option<(f64, f64)>;
+type GpsFix = Option<(f32, f32)>;
 
 pub fn get_lat_lon(
     uart: UART1,
@@ -67,7 +67,7 @@ pub fn get_lat_lon(
                             Ok(_) => {
                                 if let (Some(lat), Some(lon)) = (nmea.latitude, nmea.longitude) {
                                     drop(gps_power);
-                                    return Ok((Some((lat, lon)), power_pin));
+                                    return Ok((Some((lat as f32, lon as f32)), power_pin));
                                 }
                             }
                             Err(_e) => {}
